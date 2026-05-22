@@ -1,3 +1,4 @@
+import json
 import logging
 from logging import LogRecord
 from logging.handlers import RotatingFileHandler
@@ -6,7 +7,7 @@ import sys
 from nxc.console import nxc_console
 from nxc.paths import NXC_PATH
 from termcolor import colored
-from datetime import datetime
+from datetime import datetime, timezone
 from rich.text import Text
 from rich.logging import RichHandler
 import functools
@@ -20,6 +21,18 @@ def parse_debug_args():
     debug_parser.add_argument("--verbose", action="store_true")
     args, _ = debug_parser.parse_known_args()
     return args
+
+
+def _parse_json_arg():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--json", action="store_true")
+    args, _ = parser.parse_known_args()
+    return args.json
+
+
+# Detected once at import time from sys.argv so every NXCAdapter instance
+# (per-protocol, per-module) honours the flag without needing to be reconfigured.
+JSON_MODE = _parse_json_arg()
 
 
 def setup_debug_logging():
@@ -69,7 +82,9 @@ def no_debug(func):
     """
     @functools.wraps(func)
     def wrapper(self, msg, *args, **kwargs):
-        if self.logger.getEffectiveLevel() >= logging.INFO:
+        # In JSON mode the per-method handlers emit NDJSON themselves; bypass the
+        # debug-rerouting path so records still flow to stdout even with --debug.
+        if JSON_MODE or self.logger.getEffectiveLevel() >= logging.INFO:
             return func(self, msg, *args, **kwargs)
         else:
             formatted_text = Text.from_ansi(self.format(msg, *args, **kwargs)[0])
@@ -128,9 +143,34 @@ class NXCAdapter(logging.LoggerAdapter):
 
         return (f"{module_name:<24} {self.extra['host']:<15} {self.extra['port']:<6} {self.extra['hostname'] if self.extra['hostname'] else 'NONE':<16} {msg}", kwargs)
 
+    def _emit_json(self, level, msg):
+        """Emit a single NDJSON record on stdout for --json mode.
+
+        The schema is intentionally flat so consumers can `jq` it without
+        special-casing protocols or modules. The raw message is preserved
+        verbatim (with ANSI stripped); structured payloads from modules
+        can be layered in later via an optional `data` field.
+        """
+        extra = self.extra or {}
+        record = {
+            "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+            "level": level,
+            "protocol": extra.get("protocol"),
+            "module": extra.get("module_name"),
+            "host": extra.get("host"),
+            "port": extra.get("port"),
+            "hostname": extra.get("hostname"),
+            "message": Text.from_ansi(str(msg)).plain,
+        }
+        sys.stdout.write(json.dumps(record, default=str) + "\n")
+        sys.stdout.flush()
+
     @no_debug
     def display(self, msg, *args, **kwargs):
         """Display text to console, formatted for nxc"""
+        if JSON_MODE:
+            self._emit_json("display", msg)
+            return
         msg, kwargs = self.format(f"{colored('[*]', 'blue', attrs=['bold'])} {msg}", kwargs)
         text = Text.from_ansi(msg)
         nxc_console.print(text, *args, **kwargs)
@@ -139,6 +179,9 @@ class NXCAdapter(logging.LoggerAdapter):
     @no_debug
     def success(self, msg, color="green", *args, **kwargs):
         """Prints some sort of success to the user"""
+        if JSON_MODE:
+            self._emit_json("success", msg)
+            return
         msg, kwargs = self.format(f"{colored('[+]', color, attrs=['bold'])} {msg}", kwargs)
         text = Text.from_ansi(msg)
         nxc_console.print(text, *args, **kwargs)
@@ -147,6 +190,9 @@ class NXCAdapter(logging.LoggerAdapter):
     @no_debug
     def highlight(self, msg, *args, **kwargs):
         """Prints a completely yellow highlighted message to the user"""
+        if JSON_MODE:
+            self._emit_json("highlight", msg)
+            return
         msg, kwargs = self.format(f"{colored(msg, 'yellow', attrs=['bold'])}", kwargs)
         text = Text.from_ansi(msg)
         nxc_console.print(text, *args, **kwargs)
@@ -155,6 +201,9 @@ class NXCAdapter(logging.LoggerAdapter):
     @no_debug
     def fail(self, msg, color="red", *args, **kwargs):
         """Prints a failure (may or may not be an error) - e.g. login creds didn't work"""
+        if JSON_MODE:
+            self._emit_json("fail", msg)
+            return
         msg, kwargs = self.format(f"{colored('[-]', color, attrs=['bold'])} {msg}", kwargs)
         text = Text.from_ansi(msg)
         nxc_console.print(text, *args, **kwargs)

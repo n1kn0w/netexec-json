@@ -37,6 +37,7 @@ def gen_cli_args():
     output_group = output_parser.add_argument_group("Output Options")
     output_group.add_argument("--no-progress", action="store_true", help="do not displaying progress bar during scan")
     output_group.add_argument("--log", metavar="LOG", help="export result into a custom file")
+    output_group.add_argument("--json", action="store_true", help="emit results as NDJSON on stdout (one record per line); pretty output is sent to stderr")
     log_level = output_group.add_mutually_exclusive_group()
     log_level.add_argument("--verbose", action="store_true", help="enable verbose output")
     log_level.add_argument("--debug", action="store_true", help="enable debug level information")
@@ -132,6 +133,11 @@ def gen_cli_args():
     # Multiply output_tries by 10 to enable more fine granural control, see exec methods
     if hasattr(args, "get_output_tries"):
         args.get_output_tries = args.get_output_tries * 10
+
+    # The rich progress bar would otherwise repaint on stderr and clutter logs
+    # for users piping NDJSON; force-disable it whenever --json is set.
+    if getattr(args, "json", False):
+        args.no_progress = True
 
     return args, [CODENAME, VERSION, COMMIT, DISTANCE]
 
