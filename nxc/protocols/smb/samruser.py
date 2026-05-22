@@ -144,7 +144,7 @@ class UserSamrDump:
 
     def get_user_info(self, domain_handle, user_ids):
         self.logger.debug(f"Getting user info for users: {user_ids}")
-        self.logger.highlight(f"{'-Username-':<30}{'-Last PW Set-':<20}{'-BadPW-':<8}{'-Description-':<60}")
+        self.logger.highlight(f"{'-Username-':<30}{'-Last PW Set-':<20}{'-BadPW-':<8}{'-Description-':<60}", pretty_only=True)
         users = []
 
         for user in user_ids:
@@ -169,7 +169,16 @@ class UserSamrDump:
             if last_pw_set == "1601-01-01 00:00:00":
                 last_pw_set = "<never>"
             users.append(user_name)
-            self.logger.highlight(f"{user_name:<30}{last_pw_set:<20}{bad_pwd_count:<8}{user_description} ")
+            self.logger.highlight(
+                f"{user_name:<30}{last_pw_set:<20}{bad_pwd_count:<8}{user_description} ",
+                data={
+                    "rid": int(user),
+                    "username": str(user_name),
+                    "last_pw_set": None if last_pw_set == "<never>" else str(last_pw_set),
+                    "bad_pwd_count": int(bad_pwd_count),
+                    "description": str(user_description),
+                },
+            )
             samr.hSamrCloseHandle(self.dce, open_user_resp["UserHandle"])
         return users
 

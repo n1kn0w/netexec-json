@@ -1508,16 +1508,26 @@ class smb(connection):
             self.logger.display("[REMOVED] Use the --shares read,write options instead.")
 
         self.logger.display("Enumerated shares")
-        self.logger.highlight(f"{'Share':<15} {'Permissions':<15} {'Remark'}")
-        self.logger.highlight(f"{'-----':<15} {'-----------':<15} {'------'}")
+        self.logger.highlight(f"{'Share':<15} {'Permissions':<15} {'Remark'}", pretty_only=True)
+        self.logger.highlight(f"{'-----':<15} {'-----------':<15} {'------'}", pretty_only=True)
 
         for share in permissions:
             name = share["name"]
             remark = share["remark"]
-            perms = ",".join(share["access"])
+            access = list(share["access"])
+            perms = ",".join(access)
             if self.args.shares and self.args.shares.lower() not in perms.lower():
                 continue
-            self.logger.highlight(f"{name:<15} {perms:<15} {remark}")
+            self.logger.highlight(
+                f"{name:<15} {perms:<15} {remark}",
+                data={
+                    "share": str(name),
+                    "access": [str(a) for a in access],
+                    "readable": "READ" in access,
+                    "writable": "WRITE" in access,
+                    "remark": str(remark),
+                },
+            )
         return permissions
 
     def dir(self):

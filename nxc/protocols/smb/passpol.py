@@ -176,19 +176,43 @@ class PassPolDump:
         for domain in self.__domains:
             nxc_logger.debug(f"{domain['Name']}")
 
-        self.logger.success(f"Dumping password info for domain: {self.__domains[0]['Name']}")
-        self.logger.highlight(f"Minimum password length: {self.__min_pass_len}")
-        self.logger.highlight(f"Password history length: {self.__pass_hist_len}")
-        self.logger.highlight(f"Maximum password age: {self.__max_pass_age}")
-        self.logger.highlight("")
-        self.logger.highlight(f"Password Complexity Flags: {self.__pass_prop or 'None'}")
+        domain_name = str(self.__domains[0]["Name"])
+
+        # PASSCOMPLEX keys end with ":" — strip and snake_case for clean JSON keys.
+        def _flag_key(label):
+            return label.rstrip(":").lower().replace(" ", "_")
+
+        complexity_flags = {_flag_key(PASSCOMPLEX[i]): bool(a) for i, a in enumerate(self.__pass_prop)}
+
+        # min_pass_len / pass_hist_len / accnt_lock_thres are int OR the string "None"
+        # depending on policy. Preserve the raw value rather than forcing a cast.
+        self.logger.success(
+            f"Dumping password info for domain: {domain_name}",
+            data={
+                "domain": domain_name,
+                "min_password_length": self.__min_pass_len,
+                "password_history_length": self.__pass_hist_len,
+                "max_password_age": str(self.__max_pass_age),
+                "min_password_age": str(self.__min_pass_age),
+                "password_complexity_flags": complexity_flags,
+                "reset_account_lockout_counter": str(self.__rst_accnt_lock_counter),
+                "locked_account_duration": str(self.__lock_accnt_dur),
+                "account_lockout_threshold": self.__accnt_lock_thres,
+                "forced_logoff_time": str(self.__force_logoff_time),
+            },
+        )
+        self.logger.highlight(f"Minimum password length: {self.__min_pass_len}", pretty_only=True)
+        self.logger.highlight(f"Password history length: {self.__pass_hist_len}", pretty_only=True)
+        self.logger.highlight(f"Maximum password age: {self.__max_pass_age}", pretty_only=True)
+        self.logger.highlight("", pretty_only=True)
+        self.logger.highlight(f"Password Complexity Flags: {self.__pass_prop or 'None'}", pretty_only=True)
 
         for i, a in enumerate(self.__pass_prop):
-            self.logger.highlight(f"\t{PASSCOMPLEX[i]} {a!s}")
+            self.logger.highlight(f"\t{PASSCOMPLEX[i]} {a!s}", pretty_only=True)
 
-        self.logger.highlight("")
-        self.logger.highlight(f"Minimum password age: {self.__min_pass_age}")
-        self.logger.highlight(f"Reset Account Lockout Counter: {self.__rst_accnt_lock_counter}")
-        self.logger.highlight(f"Locked Account Duration: {self.__lock_accnt_dur}")
-        self.logger.highlight(f"Account Lockout Threshold: {self.__accnt_lock_thres}")
-        self.logger.highlight(f"Forced Log off Time: {self.__force_logoff_time}")
+        self.logger.highlight("", pretty_only=True)
+        self.logger.highlight(f"Minimum password age: {self.__min_pass_age}", pretty_only=True)
+        self.logger.highlight(f"Reset Account Lockout Counter: {self.__rst_accnt_lock_counter}", pretty_only=True)
+        self.logger.highlight(f"Locked Account Duration: {self.__lock_accnt_dur}", pretty_only=True)
+        self.logger.highlight(f"Account Lockout Threshold: {self.__accnt_lock_thres}", pretty_only=True)
+        self.logger.highlight(f"Forced Log off Time: {self.__force_logoff_time}", pretty_only=True)

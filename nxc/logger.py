@@ -143,13 +143,15 @@ class NXCAdapter(logging.LoggerAdapter):
 
         return (f"{module_name:<24} {self.extra['host']:<15} {self.extra['port']:<6} {self.extra['hostname'] if self.extra['hostname'] else 'NONE':<16} {msg}", kwargs)
 
-    def _emit_json(self, level, msg):
+    def _emit_json(self, level, msg, data=None):
         """Emit a single NDJSON record on stdout for --json mode.
 
         The schema is intentionally flat so consumers can `jq` it without
-        special-casing protocols or modules. The raw message is preserved
-        verbatim (with ANSI stripped); structured payloads from modules
-        can be layered in later via an optional `data` field.
+        special-casing protocols or modules. The raw `message` is preserved
+        verbatim (with ANSI stripped). When the caller supplies a structured
+        `data` payload, it is included as a `data` field on the record so
+        consumers can read parsed values (e.g. {"username": "...", ...})
+        without regex-parsing the formatted text.
         """
         extra = self.extra or {}
         record = {
@@ -162,14 +164,24 @@ class NXCAdapter(logging.LoggerAdapter):
             "hostname": extra.get("hostname"),
             "message": Text.from_ansi(str(msg)).plain,
         }
+        if data is not None:
+            record["data"] = data
         sys.stdout.write(json.dumps(record, default=str) + "\n")
         sys.stdout.flush()
 
     @no_debug
-    def display(self, msg, *args, **kwargs):
-        """Display text to console, formatted for nxc"""
+    def display(self, msg, *args, data=None, pretty_only=False, **kwargs):
+        """Display text to console, formatted for nxc
+
+        Keyword args:
+            data: optional structured payload included in the JSON record under "data".
+            pretty_only: when True, the call is silently dropped in JSON mode
+                (used for column-header rows, blank separators, decorative banners
+                that only make sense in TTY output).
+        """
         if JSON_MODE:
-            self._emit_json("display", msg)
+            if not pretty_only:
+                self._emit_json("display", msg, data=data)
             return
         msg, kwargs = self.format(f"{colored('[*]', 'blue', attrs=['bold'])} {msg}", kwargs)
         text = Text.from_ansi(msg)
@@ -177,10 +189,14 @@ class NXCAdapter(logging.LoggerAdapter):
         self.log_console_to_file(text, *args, **kwargs)
 
     @no_debug
-    def success(self, msg, color="green", *args, **kwargs):
-        """Prints some sort of success to the user"""
+    def success(self, msg, color="green", *args, data=None, pretty_only=False, **kwargs):
+        """Prints some sort of success to the user
+
+        See display() for the meaning of `data` and `pretty_only`.
+        """
         if JSON_MODE:
-            self._emit_json("success", msg)
+            if not pretty_only:
+                self._emit_json("success", msg, data=data)
             return
         msg, kwargs = self.format(f"{colored('[+]', color, attrs=['bold'])} {msg}", kwargs)
         text = Text.from_ansi(msg)
@@ -188,10 +204,14 @@ class NXCAdapter(logging.LoggerAdapter):
         self.log_console_to_file(text, *args, **kwargs)
 
     @no_debug
-    def highlight(self, msg, *args, **kwargs):
-        """Prints a completely yellow highlighted message to the user"""
+    def highlight(self, msg, *args, data=None, pretty_only=False, **kwargs):
+        """Prints a completely yellow highlighted message to the user
+
+        See display() for the meaning of `data` and `pretty_only`.
+        """
         if JSON_MODE:
-            self._emit_json("highlight", msg)
+            if not pretty_only:
+                self._emit_json("highlight", msg, data=data)
             return
         msg, kwargs = self.format(f"{colored(msg, 'yellow', attrs=['bold'])}", kwargs)
         text = Text.from_ansi(msg)
@@ -199,10 +219,14 @@ class NXCAdapter(logging.LoggerAdapter):
         self.log_console_to_file(text, *args, **kwargs)
 
     @no_debug
-    def fail(self, msg, color="red", *args, **kwargs):
-        """Prints a failure (may or may not be an error) - e.g. login creds didn't work"""
+    def fail(self, msg, color="red", *args, data=None, pretty_only=False, **kwargs):
+        """Prints a failure (may or may not be an error) - e.g. login creds didn't work
+
+        See display() for the meaning of `data` and `pretty_only`.
+        """
         if JSON_MODE:
-            self._emit_json("fail", msg)
+            if not pretty_only:
+                self._emit_json("fail", msg, data=data)
             return
         msg, kwargs = self.format(f"{colored('[-]', color, attrs=['bold'])} {msg}", kwargs)
         text = Text.from_ansi(msg)
